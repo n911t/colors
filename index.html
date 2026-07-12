@@ -608,25 +608,25 @@
         let delayFeedback = null;
         let masterGain = null;
 
-        // Pentatonic minor scale - mystical Eastern feel like Genshin
-        // D4 minor pentatonic across octaves for that Liyue/Mondstadt feel
+        // Full major scale from C4 ascending - do re mi fa sol la si...
+        // Each strip id maps directly to its position in this scale
         const SCALE_FREQS = [
-            293.66, // D4
-            349.23, // F4
-            392.00, // G4
-            440.00, // A4
-            523.25, // C5
-            587.33, // D5
-            698.46, // F5
-            783.99, // G5
-            880.00, // A5
-            1046.50, // C6
-            1174.66, // D6
-            1396.91, // F6
-            1567.98, // G6
-            1760.00, // A6
-            2093.00, // C7
-            2349.32  // D7
+            261.63, // C4 (دو4)
+            293.66, // D4 (ري4)
+            329.63, // E4 (مي4)
+            349.23, // F4 (فا4)
+            392.00, // G4 (صول4)
+            440.00, // A4 (لا4)
+            493.88, // B4 (سي4)
+            523.25, // C5 (دو5)
+            587.33, // D5 (ري5)
+            659.25, // E5 (مي5)
+            698.46, // F5 (فا5)
+            783.99, // G5 (صول5)
+            880.00, // A5 (لا5)
+            987.77, // B5 (سي5)
+            1046.50, // C6 (دو6)
+            1174.66  // D6 (ري6)
         ];
 
         function createReverbIR(ctx, duration = 2.5, decay = 2.0) {
@@ -853,29 +853,28 @@
 
         function playWinSound() {
             if (!audioCtx || isMuted) return;
-            // Genshin-style victory fanfare - warm, triumphant, ethereal
-            // D major pentatonic ascending with delay
+            // Ascending major scale fanfare: do re mi fa sol la si do
             const melody = [
                 { note: 0, time: 0 },
-                { note: 2, time: 0.15 },
-                { note: 4, time: 0.30 },
-                { note: 5, time: 0.50 },
-                { note: 7, time: 0.70 },
-                { note: 9, time: 0.95 },
-                { note: 11, time: 1.25 },
-                { note: 12, time: 1.60 },
+                { note: 1, time: 0.12 },
+                { note: 2, time: 0.24 },
+                { note: 3, time: 0.38 },
+                { note: 4, time: 0.54 },
+                { note: 5, time: 0.72 },
+                { note: 6, time: 0.94 },
+                { note: 7, time: 1.20 },
             ];
             melody.forEach(({ note, time }) => {
                 setTimeout(() => {
                     playTone(note, 0, { volume: 0.22, duration: 2.5 });
                 }, time * 1000);
             });
-            // Final sustained chord after melody
+            // Final sustained chord
             setTimeout(() => {
-                [5, 7, 9, 12].forEach(n => {
+                [0, 2, 4, 7].forEach(n => {
                     playTone(n, 0, { volume: 0.1, duration: 4.0 });
                 });
-            }, 2200);
+            }, 2000);
         }
 
         function playErrorSound() {
@@ -1020,7 +1019,7 @@
             if (e.button && e.button !== 0) return;
             const el = e.currentTarget;
             if (el.classList.contains('fixed')) {
-                playPickupSound(parseInt(el.dataset.id));
+                playPickupSound(getStripIndex(el));
                 return;
             }
             e.preventDefault();
@@ -1089,7 +1088,7 @@
                 endDrag();
             } else {
                 // Just a tap
-                playPickupSound(parseInt(dragSource.dataset.id));
+                playPickupSound(getStripIndex(dragSource));
             }
 
             dragSource = null;
