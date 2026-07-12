@@ -592,288 +592,118 @@
         animateBg();
 
         // ==========================================
-        // AUDIO SYSTEM - Genshin Impact Style
-        // Warm, ethereal, with reverb & delay
+        // AUDIO SYSTEM - Piano Octave 4+
         // ==========================================
         let audioCtx = null;
         let isMuted = false;
-        let reverbNode = null;
-        let delayNode = null;
-        let delayFeedback = null;
         let masterGain = null;
 
-        // Full major scale from C4 ascending - do re mi fa sol la si...
-        // Each strip id maps directly to its position in this scale
+        // Piano notes starting from C4 (octave 4)
         const SCALE_FREQS = [
-            261.63, // C4 (دو4)
-            293.66, // D4 (ري4)
-            329.63, // E4 (مي4)
-            349.23, // F4 (فا4)
-            392.00, // G4 (صول4)
-            440.00, // A4 (لا4)
-            493.88, // B4 (سي4)
-            523.25, // C5 (دو5)
-            587.33, // D5 (ري5)
-            659.25, // E5 (مي5)
-            698.46, // F5 (فا5)
-            783.99, // G5 (صول5)
-            880.00, // A5 (لا5)
-            987.77, // B5 (سي5)
-            1046.50, // C6 (دو6)
-            1174.66  // D6 (ري6)
+            261.63, // C4
+            277.18, // C#4
+            293.66, // D4
+            311.13, // D#4
+            329.63, // E4
+            349.23, // F4
+            369.99, // F#4
+            392.00, // G4
+            415.30, // G#4
+            440.00, // A4
+            466.16, // A#4
+            493.88, // B4
+            523.25, // C5
+            554.37, // C#5
+            587.33, // D5
+            622.25, // D#5
+            659.25, // E5
+            698.46, // F5
+            739.99, // F#5
+            783.99  // G5
         ];
-
-        function createReverbIR(ctx, duration = 2.5, decay = 2.0) {
-            const rate = ctx.sampleRate;
-            const length = rate * duration;
-            const impulse = ctx.createBuffer(2, length, rate);
-            for (let ch = 0; ch < 2; ch++) {
-                const data = impulse.getChannelData(ch);
-                for (let i = 0; i < length; i++) {
-                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
-                }
-            }
-            return impulse;
-        }
 
         function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-                // Master gain
                 masterGain = audioCtx.createGain();
-                masterGain.gain.value = 0.7;
+                masterGain.gain.value = 0.8;
                 masterGain.connect(audioCtx.destination);
-
-                // Reverb (convolver with warm impulse response)
-                const convolver = audioCtx.createConvolver();
-                convolver.buffer = createReverbIR(audioCtx, 3.0, 2.5);
-                const reverbGain = audioCtx.createGain();
-                reverbGain.gain.value = 0.35;
-                convolver.connect(reverbGain);
-                reverbGain.connect(masterGain);
-                reverbNode = convolver;
-
-                // Wet reverb send
-                const reverbSend = audioCtx.createGain();
-                reverbSend.gain.value = 1.0;
-                reverbSend.connect(reverbNode);
-
-                // Delay (gentle echo)
-                delayNode = audioCtx.createDelay(1.0);
-                delayNode.delayTime.value = 0.35;
-                delayFeedback = audioCtx.createGain();
-                delayFeedback.gain.value = 0.25;
-                const delayWet = audioCtx.createGain();
-                delayWet.gain.value = 0.2;
-                delayNode.connect(delayFeedback);
-                delayFeedback.connect(delayNode);
-                delayNode.connect(delayWet);
-                delayWet.connect(masterGain);
-
-                // Store wet sends for easy access
-                audioCtx._reverbSend = reverbSend;
-                audioCtx._delayNode = delayNode;
             }
             if (audioCtx.state === 'suspended') audioCtx.resume();
         }
 
-        // Create a warm, harp-like tone with Genshin Impact character
-        function playTone(position, totalStrips, options = {}) {
-            if (!audioCtx || isMuted) return;
-            const { volume = 0.2, duration = 1.5, isCorrect = false } = options;
-            const freq = SCALE_FREQS[position % SCALE_FREQS.length];
-            const now = audioCtx.currentTime;
+        // Piano tone using additive harmonics with fast attack & natural decay
+        function pianoNote(freq, startTime, volume, duration) {
+            if (!audioCtx) return;
+            const now = startTime;
+            const harmonics = [1, 2, 3, 4, 5, 6, 7, 8];
+            const amplitudes = [1.0, 0.5, 0.3, 0.15, 0.08, 0.05, 0.03, 0.02];
+            const decays = [duration, duration * 0.8, duration * 0.6, duration * 0.45, duration * 0.35, duration * 0.28, duration * 0.22, duration * 0.18];
 
-            // -- Layer 1: Warm fundamental (sine - like a soft harp pluck) --
-            const osc1 = audioCtx.createOscillator();
-            const g1 = audioCtx.createGain();
-            osc1.type = 'sine';
-            osc1.frequency.setValueAtTime(freq, now);
-            osc1.connect(g1);
-            g1.connect(masterGain);
-            g1.connect(audioCtx._reverbSend);
-            g1.connect(audioCtx._delayNode);
-            g1.gain.setValueAtTime(0, now);
-            g1.gain.linearRampToValueAtTime(volume * 0.6, now + 0.008);
-            g1.gain.exponentialRampToValueAtTime(volume * 0.35, now + 0.08);
-            g1.gain.exponentialRampToValueAtTime(0.001, now + duration);
-            osc1.start(now);
-            osc1.stop(now + duration);
+            harmonics.forEach((h, i) => {
+                if (freq * h > 20000) return; // skip inaudible
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq * h, now);
+                osc.connect(g);
+                g.connect(masterGain);
 
-            // -- Layer 2: Soft triangle (celesta warmth) --
-            const osc2 = audioCtx.createOscillator();
-            const g2 = audioCtx.createGain();
-            osc2.type = 'triangle';
-            osc2.frequency.setValueAtTime(freq * 2.0, now);
-            osc2.connect(g2);
-            g2.connect(masterGain);
-            g2.connect(audioCtx._reverbSend);
-            g2.gain.setValueAtTime(0, now);
-            g2.gain.linearRampToValueAtTime(volume * 0.2, now + 0.005);
-            g2.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.6);
-            osc2.start(now);
-            osc2.stop(now + duration * 0.8);
+                // Sharp attack, exponential decay
+                const peakVol = volume * amplitudes[i];
+                g.gain.setValueAtTime(0, now);
+                g.gain.linearRampToValueAtTime(peakVol, now + 0.003);
+                g.gain.exponentialRampToValueAtTime(peakVol * 0.3, now + 0.05);
+                g.gain.exponentialRampToValueAtTime(0.001, now + decays[i]);
 
-            // -- Layer 3: Gentle shimmer (high sine, like wind chimes) --
-            const osc3 = audioCtx.createOscillator();
-            const g3 = audioCtx.createGain();
-            osc3.type = 'sine';
-            osc3.frequency.setValueAtTime(freq * 3.01, now);
-            osc3.connect(g3);
-            g3.connect(masterGain);
-            g3.connect(audioCtx._reverbSend);
-            g3.gain.setValueAtTime(0, now);
-            g3.gain.linearRampToValueAtTime(volume * 0.06, now + 0.003);
-            g3.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.35);
-            osc3.start(now);
-            osc3.stop(now + duration * 0.5);
-
-            // -- Layer 4: Sub warmth (very low sine for depth) --
-            const osc4 = audioCtx.createOscillator();
-            const g4 = audioCtx.createGain();
-            osc4.type = 'sine';
-            osc4.frequency.setValueAtTime(freq * 0.5, now);
-            osc4.connect(g4);
-            g4.connect(masterGain);
-            g4.gain.setValueAtTime(0, now);
-            g4.gain.linearRampToValueAtTime(volume * 0.12, now + 0.02);
-            g4.gain.exponentialRampToValueAtTime(0.001, now + duration * 1.2);
-            osc4.start(now);
-            osc4.stop(now + duration * 1.3);
-
-            // -- Layer 5: Soft detuned pad for richness --
-            const osc5 = audioCtx.createOscillator();
-            const g5 = audioCtx.createGain();
-            osc5.type = 'sine';
-            osc5.frequency.setValueAtTime(freq * 1.002, now); // slight detune
-            osc5.connect(g5);
-            g5.connect(audioCtx._reverbSend);
-            g5.gain.setValueAtTime(0, now);
-            g5.gain.linearRampToValueAtTime(volume * 0.1, now + 0.01);
-            g5.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.9);
-            osc5.start(now);
-            osc5.stop(now + duration);
+                osc.start(now);
+                osc.stop(now + decays[i] + 0.01);
+            });
         }
 
         function playPickupSound(position) {
-            // Soft, quick chime - like selecting in Genshin menu
             if (!audioCtx || isMuted) return;
-            const freq = SCALE_FREQS[position % SCALE_FREQS.length];
-            const now = audioCtx.currentTime;
-
-            const osc = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq * 1.5, now);
-            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.1);
-            osc.connect(g);
-            g.connect(masterGain);
-            g.connect(audioCtx._reverbSend);
-            g.gain.setValueAtTime(0, now);
-            g.gain.linearRampToValueAtTime(0.15, now + 0.005);
-            g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-            osc.start(now);
-            osc.stop(now + 0.4);
-
-            // Gentle click
-            const osc2 = audioCtx.createOscillator();
-            const g2 = audioCtx.createGain();
-            osc2.type = 'triangle';
-            osc2.frequency.setValueAtTime(freq * 2, now);
-            osc2.connect(g2);
-            g2.connect(masterGain);
-            g2.gain.setValueAtTime(0, now);
-            g2.gain.linearRampToValueAtTime(0.06, now + 0.003);
-            g2.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-            osc2.start(now);
-            osc2.stop(now + 0.15);
+            const idx = Math.max(0, Math.min(position, SCALE_FREQS.length - 1));
+            const freq = SCALE_FREQS[idx];
+            pianoNote(freq, audioCtx.currentTime, 0.25, 0.8);
         }
 
         function playPlaceSound(position, isCorrect) {
             if (!audioCtx || isMuted) return;
-            const freq = SCALE_FREQS[position % SCALE_FREQS.length];
-            const vol = isCorrect ? 0.25 : 0.15;
-            const dur = isCorrect ? 2.0 : 0.8;
+            const idx = Math.max(0, Math.min(position, SCALE_FREQS.length - 1));
+            const freq = SCALE_FREQS[idx];
             const now = audioCtx.currentTime;
 
             if (isCorrect) {
-                // Correct - warm ascending chime (Genshin achievement feel)
-                // Three quick notes going up
-                [1.0, 1.25, 1.5].forEach((mult, i) => {
-                    const t = now + i * 0.08;
-                    const osc = audioCtx.createOscillator();
-                    const g = audioCtx.createGain();
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(freq * mult, t);
-                    osc.connect(g);
-                    g.connect(masterGain);
-                    g.connect(audioCtx._reverbSend);
-                    g.connect(audioCtx._delayNode);
-                    g.gain.setValueAtTime(0, t);
-                    g.gain.linearRampToValueAtTime(vol * (0.7 + i * 0.15), t + 0.005);
-                    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-                    osc.start(t);
-                    osc.stop(t + dur);
-                });
-                // Warm sustain pad
-                const pad = audioCtx.createOscillator();
-                const pg = audioCtx.createGain();
-                pad.type = 'sine';
-                pad.frequency.setValueAtTime(freq, now + 0.16);
-                pad.connect(pg);
-                pg.connect(audioCtx._reverbSend);
-                pg.gain.setValueAtTime(0, now + 0.16);
-                pg.gain.linearRampToValueAtTime(vol * 0.2, now + 0.25);
-                pg.gain.exponentialRampToValueAtTime(0.001, now + dur);
-                pad.start(now + 0.16);
-                pad.stop(now + dur);
+                // Correct: bright piano chord
+                pianoNote(freq, now, 0.3, 2.0);
+                pianoNote(freq * 1.25, now + 0.05, 0.2, 1.8);
+                pianoNote(freq * 1.5, now + 0.1, 0.15, 1.5);
             } else {
-                // Wrong position - soft muted thud (gentle, not harsh)
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq * 0.7, now);
-                osc.frequency.exponentialRampToValueAtTime(freq * 0.4, now + 0.15);
-                osc.connect(g);
-                g.connect(masterGain);
-                g.gain.setValueAtTime(0, now);
-                g.gain.linearRampToValueAtTime(vol * 0.5, now + 0.008);
-                g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-                osc.start(now);
-                osc.stop(now + 0.3);
+                // Wrong: soft single note
+                pianoNote(freq, now, 0.15, 0.6);
             }
         }
 
         function playWinSound() {
             if (!audioCtx || isMuted) return;
-            // Ascending major scale fanfare: do re mi fa sol la si do
-            const melody = [
-                { note: 0, time: 0 },
-                { note: 1, time: 0.12 },
-                { note: 2, time: 0.24 },
-                { note: 3, time: 0.38 },
-                { note: 4, time: 0.54 },
-                { note: 5, time: 0.72 },
-                { note: 6, time: 0.94 },
-                { note: 7, time: 1.20 },
-            ];
-            melody.forEach(({ note, time }) => {
-                setTimeout(() => {
-                    playTone(note, 0, { volume: 0.22, duration: 2.5 });
-                }, time * 1000);
+            const now = audioCtx.currentTime;
+            // Ascending C major scale: C4 D4 E4 F4 G4 A4 B4 C5
+            const notes = [0, 2, 4, 5, 7, 9, 11, 12];
+            notes.forEach((n, i) => {
+                pianoNote(SCALE_FREQS[n], now + i * 0.15, 0.25, 2.0);
             });
-            // Final sustained chord
+            // Final chord
             setTimeout(() => {
-                [0, 2, 4, 7].forEach(n => {
-                    playTone(n, 0, { volume: 0.1, duration: 4.0 });
-                });
-            }, 2000);
+                pianoNote(SCALE_FREQS[0], audioCtx.currentTime, 0.2, 3.0);
+                pianoNote(SCALE_FREQS[4], audioCtx.currentTime, 0.15, 3.0);
+                pianoNote(SCALE_FREQS[7], audioCtx.currentTime, 0.15, 3.0);
+                pianoNote(SCALE_FREQS[12], audioCtx.currentTime + 0.1, 0.25, 3.0);
+            }, 1400);
         }
 
         function playErrorSound() {
             if (!audioCtx || isMuted) return;
-            // Not used currently but kept for future
         }
 
         // ==========================================
