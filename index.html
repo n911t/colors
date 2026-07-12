@@ -263,12 +263,15 @@
                 0 4px 16px rgba(0, 0, 0, 0.2),
                 inset 0 1px 0 rgba(255,255,255,0.2),
                 inset 0 -1px 0 rgba(0,0,0,0.1);
-            transition: transform 0.25s cubic-bezier(.4,0,.2,1), box-shadow 0.25s, opacity 0.25s;
+            transition: transform 0.35s cubic-bezier(.4,0,.2,1), box-shadow 0.3s, opacity 0.3s;
             touch-action: none;
             overflow: hidden;
             display: flex;
             align-items: center;
             padding: 0 16px;
+        }
+        .color-strip.drag-animating {
+            transition: transform 0.35s cubic-bezier(.4,0,.2,1), box-shadow 0.3s, opacity 0.3s;
         }
         .color-strip::before {
             content: '';
@@ -299,11 +302,12 @@
         }
 
         .color-strip.dragging {
-            opacity: 0.85;
-            transform: scale(1.06) rotate(1deg);
-            box-shadow: 0 16px 40px rgba(0,0,0,0.5), 0 0 0 2px var(--accent);
-            z-index: 50;
+            opacity: 0.9 !important;
+            transform: scale(1.04) rotate(0.5deg) !important;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 2px var(--accent) !important;
+            z-index: 1000;
             pointer-events: none;
+            transition: none !important;
         }
 
         .color-strip.fixed {
@@ -896,8 +900,6 @@
         let moves = 0;
         let seconds = 0;
         let timerInterval = null;
-        let draggedEl = null;
-        let draggedIndex = -1;
         let gameStarted = false;
 
         // ==========================================
@@ -980,27 +982,13 @@
             div.dataset.id = stripData.id;
             div.dataset.index = index;
 
-            const label = document.createElement('span');
-            label.className = 'strip-label';
-            label.textContent = stripData.id + 1;
-            label.style.color = getContrastColor(stripData.rgb);
-            div.appendChild(label);
-
-            if (stripData.fixed) {
-                div.addEventListener('pointerdown', () => {
-                    playPickupSound(stripData.id);
-                });
-            } else {
-                div.draggable = true;
-                addDragListeners(div);
-            }
+            initPointerDrag(div);
 
             // Entry animation
             div.style.opacity = '0';
             div.style.transform = 'translateX(30px)';
             requestAnimationFrame(() => {
                 setTimeout(() => {
-                    div.style.transition = 'opacity 0.3s, transform 0.3s cubic-bezier(.4,0,.2,1), box-shadow 0.25s';
                     div.style.opacity = '1';
                     div.style.transform = 'translateX(0)';
                 }, index * 50);
@@ -1009,104 +997,161 @@
             return div;
         }
 
-        function addDragListeners(el) {
-            // ===== DRAG & DROP (Desktop) =====
-            el.addEventListener('dragstart', function(e) {
-                draggedEl = this;
-                draggedIndex = getStripIndex(this);
-                this.classList.add('dragging');
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', '');
-                playPickupSound(parseInt(this.dataset.id));
-                if (!gameStarted) startTimer();
-            });
+        function getStripIndex(el) {
+            return Array.from(container.children).indexOf(el);
+        }
 
-            el.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                if (this !== draggedEl && !this.classList.contains('fixed')) {
-                    this.classList.add('drop-target');
-                }
-            });
+        // ==========================================
+        // SMOOTH DRAG & DROP (Pointer Events)
+        // ==========================================
+        let dragClone = null;
+        let dragSource = null;
+        let dragOverTarget = null;
+        let dragStartY = 0;
+        let dragOffsetY = 0;
+        let stripRects = [];
+        let isDragging = false;
 
-            el.addEventListener('dragleave', function() {
-                this.classList.remove('drop-target');
-            });
+        function initPointerDrag(el) {
+            el.addEventListener('pointerdown', onPointerDown);
+        }
 
-            el.addEventListener('drop', function(e) {
-                e.preventDefault();
-                this.classList.remove('drop-target');
-                if (this !== draggedEl && !this.classList.contains('fixed')) {
-                    performSwap(draggedEl, this);
-                }
-            });
+        function onPointerDown(e) {
+            if (e.button && e.button !== 0) return;
+            const el = e.currentTarget;
+            if (el.classList.contains('fixed')) {
+                playPickupSound(parseInt(el.dataset.id));
+                return;
+            }
+            e.preventDefault();
+            el.setPointerCapture(e.pointerId);
 
-            el.addEventListener('dragend', function() {
-                this.classList.remove('dragging');
-                container.querySelectorAll('.drop-target').forEach(e => e.classList.remove('drop-target'));
-                draggedEl = null;
-                draggedIndex = -1;
-                checkWin();
-            });
+            dragSource = el;
+            isDragging = false;
+            dragStartY = e.clientY;
+            const rect = el.getBoundingClientRect();
+            dragOffsetY = e.clientY - rect.top;
+            dragOverTarget = null;
 
-            // ===== TOUCH (Mobile/Tablet) =====
-            let touchStartY = 0;
-            let touchClone = null;
-            let currentOverEl = null;
+            // Cache all strip positions
+            rebuildStripRects();
+        }
 
-            el.addEventListener('touchstart', function(e) {
-                if (this.classList.contains('fixed')) {
-                    playPickupSound(parseInt(this.dataset.id));
-                    return;
-                }
-                e.preventDefault();
-                draggedEl = this;
-                draggedIndex = getStripIndex(this);
-                touchStartY = e.touches[0].clientY;
-                this.classList.add('dragging');
-                playPickupSound(parseInt(this.dataset.id));
-                if (!gameStarted) startTimer();
-            }, { passive: false });
-
-            el.addEventListener('touchmove', function(e) {
-                if (!draggedEl) return;
-                e.preventDefault();
-                const touch = e.touches[0];
-                const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-
-                if (currentOverEl && currentOverEl !== targetEl) {
-                    currentOverEl.classList.remove('drop-target');
-                }
-
-                if (targetEl) {
-                    const stripEl = targetEl.closest('.color-strip');
-                    if (stripEl && stripEl !== draggedEl && !stripEl.classList.contains('fixed')) {
-                        stripEl.classList.add('drop-target');
-                        currentOverEl = stripEl;
-                    } else {
-                        currentOverEl = null;
-                    }
-                }
-            }, { passive: false });
-
-            el.addEventListener('touchend', function(e) {
-                if (!draggedEl) return;
-                draggedEl.classList.remove('dragging');
-
-                if (currentOverEl) {
-                    currentOverEl.classList.remove('drop-target');
-                    performSwap(draggedEl, currentOverEl);
-                    currentOverEl = null;
-                }
-
-                draggedEl = null;
-                draggedIndex = -1;
-                checkWin();
+        function rebuildStripRects() {
+            stripRects = [];
+            Array.from(container.children).forEach(child => {
+                const r = child.getBoundingClientRect();
+                stripRects.push({ el: child, top: r.top, bottom: r.bottom, mid: r.top + r.height / 2 });
             });
         }
 
-        function getStripIndex(el) {
-            return Array.from(container.children).indexOf(el);
+        document.addEventListener('pointermove', (e) => {
+            if (!dragSource) return;
+            const dy = Math.abs(e.clientY - dragStartY);
+            if (!isDragging && dy > 5) {
+                isDragging = true;
+                startDrag(e);
+            }
+            if (!isDragging) return;
+
+            // Move clone
+            if (dragClone) {
+                dragClone.style.top = (e.clientY - dragOffsetY) + 'px';
+            }
+
+            // Find which strip we're over
+            const hoverY = e.clientY;
+            let newTarget = null;
+            for (const r of stripRects) {
+                if (r.el === dragSource || r.el.classList.contains('fixed')) continue;
+                if (hoverY >= r.top && hoverY <= r.bottom) {
+                    newTarget = r.el;
+                    break;
+                }
+            }
+
+            if (newTarget !== dragOverTarget) {
+                if (dragOverTarget) dragOverTarget.classList.remove('drop-target');
+                dragOverTarget = newTarget;
+                if (dragOverTarget) dragOverTarget.classList.add('drop-target');
+            }
+        });
+
+        document.addEventListener('pointerup', (e) => {
+            if (!dragSource) return;
+
+            if (isDragging) {
+                // Perform swap if over a target
+                if (dragOverTarget) {
+                    dragOverTarget.classList.remove('drop-target');
+                    performSwap(dragSource, dragOverTarget);
+                }
+                endDrag();
+            } else {
+                // Just a tap
+                playPickupSound(parseInt(dragSource.dataset.id));
+            }
+
+            dragSource = null;
+            dragOverTarget = null;
+            isDragging = false;
+        });
+
+        function startDrag(e) {
+            if (!gameStarted) startTimer();
+            playPickupSound(parseInt(dragSource.dataset.id));
+
+            const rect = dragSource.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+
+            // Create floating clone
+            dragClone = dragSource.cloneNode(true);
+            dragClone.classList.add('dragging');
+            dragClone.style.position = 'fixed';
+            dragClone.style.width = rect.width + 'px';
+            dragClone.style.height = rect.height + 'px';
+            dragClone.style.left = rect.left + 'px';
+            dragClone.style.top = rect.top + 'px';
+            dragClone.style.zIndex = '1000';
+            dragClone.style.pointerEvents = 'none';
+            dragClone.style.margin = '0';
+            dragClone.style.transition = 'none';
+            document.body.appendChild(dragClone);
+
+            // Hide original with gap
+            dragSource.style.opacity = '0.2';
+            dragSource.style.transform = 'scale(0.95)';
+            dragSource.style.transition = 'none';
+        }
+
+        function endDrag() {
+            // Remove clone with animation
+            if (dragClone) {
+                const sourceEl = dragSource;
+                if (sourceEl) {
+                    const finalRect = sourceEl.getBoundingClientRect();
+                    dragClone.style.transition = 'all 0.3s cubic-bezier(.4,0,.2,1)';
+                    dragClone.style.top = finalRect.top + 'px';
+                    dragClone.style.left = finalRect.left + 'px';
+                    dragClone.style.width = finalRect.width + 'px';
+                    dragClone.style.transform = 'scale(1)';
+                    dragClone.style.opacity = '1';
+                }
+                const clone = dragClone;
+                setTimeout(() => {
+                    if (clone.parentNode) clone.parentNode.removeChild(clone);
+                }, 300);
+                dragClone = null;
+            }
+
+            // Restore source
+            if (dragSource) {
+                dragSource.style.opacity = '';
+                dragSource.style.transform = '';
+                dragSource.style.transition = '';
+            }
+
+            checkWin();
         }
 
         function performSwap(el1, el2) {
@@ -1117,41 +1162,37 @@
             // Swap in array
             [strips[idx1], strips[idx2]] = [strips[idx2], strips[idx1]];
 
-            // Swap in DOM
-            const allChildren = Array.from(container.children);
+            // Swap in DOM - simple and clean
+            const parent = container;
             if (idx1 < idx2) {
-                container.insertBefore(el2, el1);
-                container.insertBefore(el1, allChildren[idx2] ? allChildren[idx2].nextSibling : null);
+                parent.insertBefore(el2, el1);
+                parent.insertBefore(el1, el2.nextSibling);
             } else {
-                container.insertBefore(el1, el2);
-                container.insertBefore(el2, allChildren[idx1] ? allChildren[idx1].nextSibling : null);
+                parent.insertBefore(el1, el2);
+                parent.insertBefore(el2, el1.nextSibling);
             }
 
-            // Update data-index
-            Array.from(container.children).forEach((child, i) => child.dataset.index = i);
+            // Animate swapped strips to their new positions
+            [el1, el2].forEach(el => {
+                el.classList.add('drag-animating');
+                el.style.transform = 'scale(1.05)';
+                el.style.boxShadow = '0 0 20px var(--accent-glow)';
+                setTimeout(() => {
+                    el.style.transform = '';
+                    el.style.boxShadow = '';
+                    el.classList.remove('drag-animating');
+                }, 350);
+            });
 
-            // Play sound for the moved strip
-            const newIdx = getStripIndex(el2);
-            const isCorrect = parseInt(el2.dataset.id) === newIdx;
-            playPlaceSound(newIdx, isCorrect);
-            if (isCorrect) {
-                el2.classList.add('correct');
-            } else {
-                el2.classList.remove('correct');
-            }
-
-            // Also check el1
-            const el1NewIdx = getStripIndex(el1);
-            const el1Correct = parseInt(el1.dataset.id) === el1NewIdx;
-            if (el1Correct) el1.classList.add('correct');
-            else el1.classList.remove('correct');
+            // Play sound
+            const newIdx2 = getStripIndex(el2);
+            const isCorrect = parseInt(el2.dataset.id) === newIdx2;
+            playPlaceSound(newIdx2, isCorrect);
 
             moves++;
             movesEl.textContent = moves;
-            updateProgress();
-
-            // Mark all correct positions
             markCorrectPositions();
+            updateProgress();
         }
 
         function markCorrectPositions() {
