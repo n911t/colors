@@ -263,15 +263,12 @@
                 0 4px 16px rgba(0, 0, 0, 0.2),
                 inset 0 1px 0 rgba(255,255,255,0.2),
                 inset 0 -1px 0 rgba(0,0,0,0.1);
-            transition: transform 0.35s cubic-bezier(.4,0,.2,1), box-shadow 0.3s, opacity 0.3s;
+            transition: background-color 0.3s ease, box-shadow 0.3s, border-color 0.3s;
             touch-action: none;
             overflow: hidden;
             display: flex;
             align-items: center;
             padding: 0 16px;
-        }
-        .color-strip.drag-animating {
-            transition: transform 0.35s cubic-bezier(.4,0,.2,1), box-shadow 0.3s, opacity 0.3s;
         }
         .color-strip::before {
             content: '';
@@ -296,10 +293,7 @@
             pointer-events: none;
             transition: all 0.2s;
         }
-
-        .strip-label {
-            display: none;
-        }
+        .strip-label { display: none; }
 
         .color-strip.dragging {
             opacity: 0.9 !important;
@@ -1001,14 +995,14 @@
         }
 
         // ==========================================
-        // SMOOTH DRAG & DROP (Pointer Events)
+        // SMOOTH DRAG & SWAP SYSTEM
+        // No DOM movement - only swap data between elements
         // ==========================================
         let dragClone = null;
         let dragSource = null;
         let dragOverTarget = null;
         let dragStartY = 0;
         let dragOffsetY = 0;
-        let stripRects = [];
         let isDragging = false;
 
         function initPointerDrag(el) {
@@ -1031,17 +1025,6 @@
             const rect = el.getBoundingClientRect();
             dragOffsetY = e.clientY - rect.top;
             dragOverTarget = null;
-
-            // Cache all strip positions
-            rebuildStripRects();
-        }
-
-        function rebuildStripRects() {
-            stripRects = [];
-            Array.from(container.children).forEach(child => {
-                const r = child.getBoundingClientRect();
-                stripRects.push({ el: child, top: r.top, bottom: r.bottom, mid: r.top + r.height / 2 });
-            });
         }
 
         document.addEventListener('pointermove', (e) => {
@@ -1061,10 +1044,12 @@
             // Find which strip we're over
             const hoverY = e.clientY;
             let newTarget = null;
-            for (const r of stripRects) {
-                if (r.el === dragSource || r.el.classList.contains('fixed')) continue;
+            const children = Array.from(container.children);
+            for (const child of children) {
+                if (child === dragSource || child.classList.contains('fixed')) continue;
+                const r = child.getBoundingClientRect();
                 if (hoverY >= r.top && hoverY <= r.bottom) {
-                    newTarget = r.el;
+                    newTarget = child;
                     break;
                 }
             }
@@ -1080,14 +1065,12 @@
             if (!dragSource) return;
 
             if (isDragging) {
-                // Perform swap if over a target
                 if (dragOverTarget) {
                     dragOverTarget.classList.remove('drop-target');
                     performSwap(dragSource, dragOverTarget);
                 }
                 endDrag();
             } else {
-                // Just a tap
                 playPickupSound(getStripIndex(dragSource));
             }
 
@@ -1098,10 +1081,9 @@
 
         function startDrag(e) {
             if (!gameStarted) startTimer();
-            playPickupSound(parseInt(dragSource.dataset.id));
+            playPickupSound(getStripIndex(dragSource));
 
             const rect = dragSource.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
 
             // Create floating clone
             dragClone = dragSource.cloneNode(true);
@@ -1117,76 +1099,53 @@
             dragClone.style.transition = 'none';
             document.body.appendChild(dragClone);
 
-            // Hide original with gap
+            // Ghost the original
             dragSource.style.opacity = '0.2';
-            dragSource.style.transform = 'scale(0.95)';
             dragSource.style.transition = 'none';
         }
 
         function endDrag() {
-            // Remove clone with animation
             if (dragClone) {
-                const sourceEl = dragSource;
-                if (sourceEl) {
-                    const finalRect = sourceEl.getBoundingClientRect();
-                    dragClone.style.transition = 'all 0.3s cubic-bezier(.4,0,.2,1)';
-                    dragClone.style.top = finalRect.top + 'px';
-                    dragClone.style.left = finalRect.left + 'px';
-                    dragClone.style.width = finalRect.width + 'px';
-                    dragClone.style.transform = 'scale(1)';
-                    dragClone.style.opacity = '1';
-                }
                 const clone = dragClone;
+                clone.style.transition = 'opacity 0.2s ease';
+                clone.style.opacity = '0';
                 setTimeout(() => {
                     if (clone.parentNode) clone.parentNode.removeChild(clone);
-                }, 300);
+                }, 200);
                 dragClone = null;
             }
 
-            // Restore source
             if (dragSource) {
                 dragSource.style.opacity = '';
-                dragSource.style.transform = '';
                 dragSource.style.transition = '';
             }
 
             checkWin();
         }
 
+        // KEY: Swap only the data & color between two elements
+        // No DOM nodes are moved - only their properties change
         function performSwap(el1, el2) {
-            const idx1 = getStripIndex(el1);
-            const idx2 = getStripIndex(el2);
-            if (idx1 === -1 || idx2 === -1) return;
+            // Swap data-id
+            const tempId = el1.dataset.id;
+            el1.dataset.id = el2.dataset.id;
+            el2.dataset.id = tempId;
 
-            // Swap in array
-            [strips[idx1], strips[idx2]] = [strips[idx2], strips[idx1]];
+            // Swap background color with smooth transition
+            const tempColor = el1.style.backgroundColor;
+            el1.style.backgroundColor = el2.style.backgroundColor;
+            el2.style.backgroundColor = tempColor;
 
-            // Swap in DOM - simple and clean
-            const parent = container;
-            if (idx1 < idx2) {
-                parent.insertBefore(el2, el1);
-                parent.insertBefore(el1, el2.nextSibling);
-            } else {
-                parent.insertBefore(el1, el2);
-                parent.insertBefore(el2, el1.nextSibling);
-            }
-
-            // Animate swapped strips to their new positions
+            // Flash effect on both
             [el1, el2].forEach(el => {
-                el.classList.add('drag-animating');
-                el.style.transform = 'scale(1.05)';
-                el.style.boxShadow = '0 0 20px var(--accent-glow)';
-                setTimeout(() => {
-                    el.style.transform = '';
-                    el.style.boxShadow = '';
-                    el.classList.remove('drag-animating');
-                }, 350);
+                el.style.boxShadow = '0 0 25px var(--accent-glow)';
+                setTimeout(() => { el.style.boxShadow = ''; }, 300);
             });
 
             // Play sound
-            const newIdx2 = getStripIndex(el2);
-            const isCorrect = parseInt(el2.dataset.id) === newIdx2;
-            playPlaceSound(newIdx2, isCorrect);
+            const newIdx = getStripIndex(el1);
+            const isCorrect = parseInt(el1.dataset.id) === newIdx;
+            playPlaceSound(newIdx, isCorrect);
 
             moves++;
             movesEl.textContent = moves;
