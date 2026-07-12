@@ -598,28 +598,28 @@
         let isMuted = false;
         let masterGain = null;
 
-        // Piano notes starting from C4 (octave 4)
+        // C Major scale from C4 - do re mi fa sol la si...
         const SCALE_FREQS = [
-            261.63, // C4
-            277.18, // C#4
-            293.66, // D4
-            311.13, // D#4
-            329.63, // E4
-            349.23, // F4
-            369.99, // F#4
-            392.00, // G4
-            415.30, // G#4
-            440.00, // A4
-            466.16, // A#4
-            493.88, // B4
-            523.25, // C5
-            554.37, // C#5
-            587.33, // D5
-            622.25, // D#5
-            659.25, // E5
-            698.46, // F5
-            739.99, // F#5
-            783.99  // G5
+            261.63, // C4 (دو4)
+            293.66, // D4 (ري4)
+            329.63, // E4 (مي4)
+            349.23, // F4 (فا4)
+            392.00, // G4 (صول4)
+            440.00, // A4 (لا4)
+            493.88, // B4 (سي4)
+            523.25, // C5 (دو5)
+            587.33, // D5 (ري5)
+            659.25, // E5 (مي5)
+            698.46, // F5 (فا5)
+            783.99, // G5 (صول5)
+            880.00, // A5 (لا5)
+            987.77, // B5 (سي5)
+            1046.50, // C6 (دو6)
+            1174.66, // D6 (ري6)
+            1318.51, // E6 (مي6)
+            1396.91, // F6 (فا6)
+            1567.98, // G6 (صول6)
+            1760.00  // A6 (لا6)
         ];
 
         function initAudio() {
@@ -688,11 +688,10 @@
         function playWinSound() {
             if (!audioCtx || isMuted) return;
             const now = audioCtx.currentTime;
-            // Ascending C major scale: C4 D4 E4 F4 G4 A4 B4 C5
-            const notes = [0, 2, 4, 5, 7, 9, 11, 12];
-            notes.forEach((n, i) => {
-                pianoNote(SCALE_FREQS[n], now + i * 0.15, 0.25, 2.0);
-            });
+            // Ascending C major: do re mi fa sol la si do
+            for (let i = 0; i < 8; i++) {
+                pianoNote(SCALE_FREQS[i], now + i * 0.15, 0.25, 2.0);
+            }
             // Final chord
             setTimeout(() => {
                 pianoNote(SCALE_FREQS[0], audioCtx.currentTime, 0.2, 3.0);
@@ -843,7 +842,7 @@
             if (e.button && e.button !== 0) return;
             const el = e.currentTarget;
             if (el.classList.contains('fixed')) {
-                playPickupSound(getStripIndex(el));
+                playPickupSound(parseInt(el.dataset.id));
                 return;
             }
             e.preventDefault();
@@ -901,7 +900,7 @@
                 }
                 endDrag();
             } else {
-                playPickupSound(getStripIndex(dragSource));
+                playPickupSound(parseInt(dragSource.dataset.id));
             }
 
             dragSource = null;
@@ -911,7 +910,7 @@
 
         function startDrag(e) {
             if (!gameStarted) startTimer();
-            playPickupSound(getStripIndex(dragSource));
+            playPickupSound(parseInt(dragSource.dataset.id));
 
             const rect = dragSource.getBoundingClientRect();
 
@@ -972,10 +971,11 @@
                 setTimeout(() => { el.style.boxShadow = ''; }, 300);
             });
 
-            // Play sound
+            // Play sound based on color's correct position (id)
+            const stripId = parseInt(el1.dataset.id);
             const newIdx = getStripIndex(el1);
-            const isCorrect = parseInt(el1.dataset.id) === newIdx;
-            playPlaceSound(newIdx, isCorrect);
+            const isCorrect = stripId === newIdx;
+            playPlaceSound(stripId, isCorrect);
 
             moves++;
             movesEl.textContent = moves;
